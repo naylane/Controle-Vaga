@@ -32,7 +32,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 
 add_executable(${PROJECT_NAME}  
-        Semaforo02Display.c 
+        controle_vaga.c 
         lib/ssd1306.c # Biblioteca para o display OLED
         lib/buzzer.c  # Biblioteca para o buzzer
         )

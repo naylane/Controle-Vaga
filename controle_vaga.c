@@ -1,36 +1,9 @@
 /*
  *  Por: Naylane do Nascimento Ribeiro
  *  Data: 26/05/2025
- *
- *  Controle-Vaga
- *
- *  Descrição: Simulação de um estacionamento de contagem com um botão.
- * Cada vez que o botão é pressionado, um evento é gerado e tratado
- * por uma tarefa. A tarefa atualiza um display OLED com a contagem anotada.
  */
 
-#include "pico/stdlib.h"
-#include "hardware/i2c.h"
-#include "hardware/gpio.h"
-#include "hardware/clocks.h"
-#include "lib/ssd1306.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "semphr.h"
-#include "pico/bootrom.h"
-#include "stdio.h"
-#include "lib/buzzer.h"
-
-#define I2C_PORT i2c1
-#define I2C_SDA 14
-#define I2C_SCL 15
-#define ENDERECO 0x3C
-
-#define BUTTON_A 5 // Gera evento
-#define BUTTON_B 6 // BOOTSEL
-#define DEBOUNCE_TIME 200000        // Tempo para debounce em ms
-static uint32_t last_time_A = 0;    // Tempo da última interrupção do botão A
-static uint32_t last_time_B = 0;    // Tempo da última interrupção do botão B
+#include "controle_vaga.h"
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
