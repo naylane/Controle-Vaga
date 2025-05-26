@@ -11,12 +11,13 @@ SemaphoreHandle_t xSemaforoSaida;
 SemaphoreHandle_t xDisplayMutex;
 uint16_t eventosProcessados = 0;
 uint MAX = 10;
+uint vagas_preenchidas = 0;
 
-void gpio_callback(uint gpio, uint32_t events);
+void vTaskEntrada(void *params);
 void vTaskSaida(void *params);
-void vContadorTask(void *params);
 void gpio_irq_handler(uint gpio, uint32_t events);
 void init_gpio_button(uint gpio);
+
 
 int main() {
     stdio_init_all();
@@ -59,45 +60,17 @@ int main() {
 
 
     // Cria tarefa
-    xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    //xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskEntrada, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskSaida, "SaidaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
 }
 
-void vTaskSaida(void *params) {
-    char buffer[32];
-
-    while (true) {
-        if (xSemaphoreTake(xSemaforoSaida, portMAX_DELAY) == pdTRUE) {
-            if (eventosProcessados > 0) {
-                eventosProcessados--;
-                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
-                    ssd1306_fill(&ssd, 0);
-                    sprintf(buffer, "Eventos: %d", eventosProcessados);
-                    ssd1306_draw_string(&ssd, "Saida!", 5, 10);
-                    ssd1306_draw_string(&ssd, buffer, 5, 44);
-                    ssd1306_send_data(&ssd);
-                    xSemaphoreGive(xDisplayMutex);
-                }
-                //buzzer_play(BUZZER_PIN, 1, 1000, 100);
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
-                    ssd1306_fill(&ssd, 0);
-                    ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-                    ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-                    ssd1306_send_data(&ssd);
-                    xSemaphoreGive(xDisplayMutex);
-                }
-            }
-        }
-    }
-}
 
 // Tarefa que consome eventos e mostra no display
-void vContadorTask(void *params) {
+void vTaskEntrada(void *params) {
     char buffer[32];
 
     // Tela inicial
@@ -143,6 +116,38 @@ void vContadorTask(void *params) {
     }
 }
 
+
+// Tarefa que consome eventos de saída e mostra no display
+void vTaskSaida(void *params) {
+    char buffer[32];
+
+    while (true) {
+        if (xSemaphoreTake(xSemaforoSaida, portMAX_DELAY) == pdTRUE) {
+            if (eventosProcessados > 0) {
+                eventosProcessados--;
+                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                    ssd1306_fill(&ssd, 0);
+                    sprintf(buffer, "Eventos: %d", eventosProcessados);
+                    ssd1306_draw_string(&ssd, "Saida!", 5, 10);
+                    ssd1306_draw_string(&ssd, buffer, 5, 44);
+                    ssd1306_send_data(&ssd);
+                    xSemaphoreGive(xDisplayMutex);
+                }
+                //buzzer_play(BUZZER_PIN, 1, 1000, 100);
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                    ssd1306_fill(&ssd, 0);
+                    ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+                    ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+                    ssd1306_send_data(&ssd);
+                    xSemaphoreGive(xDisplayMutex);
+                }
+            }
+        }
+    }
+}
+
+
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events) {
     uint32_t current_time = to_us_since_boot(get_absolute_time());
@@ -175,6 +180,8 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     }
 }
 
+
+// Inicializa GPIO para botões
 void init_gpio_button(uint gpio) {
     gpio_init(gpio);
     gpio_set_dir(gpio, GPIO_IN);
