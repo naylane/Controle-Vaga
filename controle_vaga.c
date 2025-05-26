@@ -8,6 +8,7 @@
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
 SemaphoreHandle_t xSemaforoSaida;
+SemaphoreHandle_t xDisplayMutex;
 uint16_t eventosProcessados = 0;
 uint MAX = 10;
 
@@ -51,9 +52,11 @@ int main() {
     gpio_set_irq_enabled(BUTTON_B, GPIO_IRQ_EDGE_FALL, true);
     gpio_set_irq_enabled(BUTTON_JOY, GPIO_IRQ_EDGE_FALL, true);
 
-    // Cria semáforo de contagem (máximo 10, inicial 0)
+    // Cria semáforos de contagem e mutex
     xContadorSem = xSemaphoreCreateCounting(10, 0);
     xSemaforoSaida = xSemaphoreCreateCounting(10, 0);
+    xDisplayMutex = xSemaphoreCreateMutex();
+
 
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
@@ -71,23 +74,23 @@ void vTaskSaida(void *params) {
         if (xSemaphoreTake(xSemaforoSaida, portMAX_DELAY) == pdTRUE) {
             if (eventosProcessados > 0) {
                 eventosProcessados--;
-                /*
-                // Atualiza display com a nova contagem
-                ssd1306_fill(&ssd, 0);
-                sprintf(buffer, "Eventos: %d", eventosProcessados);
-                ssd1306_draw_string(&ssd, "Saida!", 5, 10);
-                ssd1306_draw_string(&ssd, buffer, 5, 44);
-                ssd1306_send_data(&ssd);
-
-                buzzer_play(BUZZER_PIN, 1, 1000, 100);
-
+                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                    ssd1306_fill(&ssd, 0);
+                    sprintf(buffer, "Eventos: %d", eventosProcessados);
+                    ssd1306_draw_string(&ssd, "Saida!", 5, 10);
+                    ssd1306_draw_string(&ssd, buffer, 5, 44);
+                    ssd1306_send_data(&ssd);
+                    xSemaphoreGive(xDisplayMutex);
+                }
+                //buzzer_play(BUZZER_PIN, 1, 1000, 100);
                 vTaskDelay(pdMS_TO_TICKS(1500));
-
-                // Retorna à tela de espera
-                ssd1306_fill(&ssd, 0);
-                ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-                ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-                ssd1306_send_data(&ssd);*/
+                if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                    ssd1306_fill(&ssd, 0);
+                    ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+                    ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+                    ssd1306_send_data(&ssd);
+                    xSemaphoreGive(xDisplayMutex);
+                }
             }
         }
     }
@@ -98,10 +101,13 @@ void vContadorTask(void *params) {
     char buffer[32];
 
     // Tela inicial
-    ssd1306_fill(&ssd, 0);
-    ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-    ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-    ssd1306_send_data(&ssd);
+    if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+        ssd1306_fill(&ssd, 0);
+        ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+        ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+        ssd1306_send_data(&ssd);
+        xSemaphoreGive(xDisplayMutex);
+    }
 
     while (true) {
         // Aguarda semáforo (um evento)
@@ -112,22 +118,27 @@ void vContadorTask(void *params) {
                 eventosProcessados = 1; // Reseta contagem se passar de 10
             }
 
-            // Atualiza display com a nova contagem
-            ssd1306_fill(&ssd, 0);
-            sprintf(buffer, "Eventos: %d", eventosProcessados);
-            ssd1306_draw_string(&ssd, "Evento ", 5, 10);
-            ssd1306_draw_string(&ssd, "recebido!", 5, 19);
-            ssd1306_draw_string(&ssd, buffer, 5, 44);
-            ssd1306_send_data(&ssd);
+            if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                // Atualiza display com a nova contagem
+                ssd1306_fill(&ssd, 0);
+                sprintf(buffer, "Eventos: %d", eventosProcessados);
+                ssd1306_draw_string(&ssd, "Evento ", 5, 10);
+                ssd1306_draw_string(&ssd, "recebido!", 5, 19);
+                ssd1306_draw_string(&ssd, buffer, 5, 44);
+                ssd1306_send_data(&ssd);
+                xSemaphoreGive(xDisplayMutex);
+            }
 
             // Simula tempo de processamento
             vTaskDelay(pdMS_TO_TICKS(1500));
-
-            // Retorna à tela de espera
-            ssd1306_fill(&ssd, 0);
-            ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-            ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-            ssd1306_send_data(&ssd);
+            if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                // Retorna à tela de espera
+                ssd1306_fill(&ssd, 0);
+                ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+                ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+                ssd1306_send_data(&ssd);
+                xSemaphoreGive(xDisplayMutex);
+            }
         }
     }
 }
