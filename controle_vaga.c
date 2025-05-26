@@ -7,9 +7,12 @@
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
+SemaphoreHandle_t xSemaforoSaida;
 uint16_t eventosProcessados = 0;
+uint MAX = 10;
 
 void gpio_callback(uint gpio, uint32_t events);
+void vTaskSaida(void *params);
 void vContadorTask(void *params);
 void gpio_irq_handler(uint gpio, uint32_t events);
 void init_gpio_button(uint gpio);
@@ -37,7 +40,7 @@ int main() {
 
     // Configuração do buzzer
     buzzer_setup_pwm(BUZZER_PIN, 4000);     // Configura o buzzer para 4kHz
-    buzzer_play(BUZZER_PIN, 1, 1000, 500);  // Toca um som inicial
+    //buzzer_play(BUZZER_PIN, 1, 1000, 500);  // Toca um som inicial
 
     // Configura os botões
     init_gpio_button(BUTTON_A);
@@ -50,21 +53,44 @@ int main() {
 
     // Cria semáforo de contagem (máximo 10, inicial 0)
     xContadorSem = xSemaphoreCreateCounting(10, 0);
+    xSemaforoSaida = xSemaphoreCreateCounting(10, 0);
 
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     //xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskSaida, "SaidaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
 }
 
-// ISR do botão A (incrementa o semáforo de contagem)
-void gpio_callback(uint gpio, uint32_t events) {
-    //buzzer_play(BUZZER_PIN, 1, 1000, 100);
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+void vTaskSaida(void *params) {
+    char buffer[32];
+
+    while (true) {
+        if (xSemaphoreTake(xSemaforoSaida, portMAX_DELAY) == pdTRUE) {
+            if (eventosProcessados > 0) {
+                eventosProcessados--;
+                /*
+                // Atualiza display com a nova contagem
+                ssd1306_fill(&ssd, 0);
+                sprintf(buffer, "Eventos: %d", eventosProcessados);
+                ssd1306_draw_string(&ssd, "Saida!", 5, 10);
+                ssd1306_draw_string(&ssd, buffer, 5, 44);
+                ssd1306_send_data(&ssd);
+
+                buzzer_play(BUZZER_PIN, 1, 1000, 100);
+
+                vTaskDelay(pdMS_TO_TICKS(1500));
+
+                // Retorna à tela de espera
+                ssd1306_fill(&ssd, 0);
+                ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+                ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+                ssd1306_send_data(&ssd);*/
+            }
+        }
+    }
 }
 
 // Tarefa que consome eventos e mostra no display
@@ -81,7 +107,8 @@ void vContadorTask(void *params) {
         // Aguarda semáforo (um evento)
         if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE) {
             eventosProcessados++;
-            if (eventosProcessados > 10) {
+            if (eventosProcessados > MAX) {
+                buzzer_play(BUZZER_PIN, 1, 1000, 500);
                 eventosProcessados = 1; // Reseta contagem se passar de 10
             }
 
@@ -111,14 +138,19 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 
     if (gpio == BUTTON_B) {
         if (current_time - last_time_B > DEBOUNCE_TIME) {
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xSemaphoreGiveFromISR(xSemaforoSaida, &xHigherPriorityTaskWoken); // Sinaliza saída
             last_time_B = current_time;
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
         }
     }
     else if (gpio == BUTTON_A) {
         if (current_time - last_time_A > DEBOUNCE_TIME) {
-            gpio_callback(gpio, events);
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
             last_time_A = current_time;
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
         }
     }
