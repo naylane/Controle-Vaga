@@ -1,10 +1,10 @@
 /*
- *  Por: Wilton Lacerda Silva
- *  Data: 16-05-2025
+ *  Por: Naylane do Nascimento Ribeiro
+ *  Data: 26/05/2025
  *
- *  Exemplo de uso de semaforo de contagem com FreeRTOS
+ *  Controle-Vaga
  *
- *  Descrição: Simulação de um semáforo de contagem com um botão.
+ *  Descrição: Simulação de um estacionamento de contagem com um botão.
  * Cada vez que o botão é pressionado, um evento é gerado e tratado
  * por uma tarefa. A tarefa atualiza um display OLED com a contagem anotada.
  */
@@ -12,12 +12,14 @@
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
+#include "hardware/clocks.h"
 #include "lib/ssd1306.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
 #include "pico/bootrom.h"
 #include "stdio.h"
+#include "lib/buzzer.h"
 
 #define I2C_PORT i2c1
 #define I2C_SDA 14
@@ -31,17 +33,67 @@ ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
 uint16_t eventosProcessados = 0;
 
+void gpio_callback(uint gpio, uint32_t events);
+void vContadorTask(void *params);
+void gpio_irq_handler(uint gpio, uint32_t events);
+
+int main() {
+    stdio_init_all();
+
+    // Configura clock do sistema
+    if (set_sys_clock_khz(128000, false)) {
+        printf("Configuração do clock do sistema completa!\n");
+    } else {
+        printf("Configuração do clock do sistema falhou!\n");
+        return -1;
+    }
+
+    // Inicialização do display
+    i2c_init(I2C_PORT, 400 * 1000);
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C_SDA);
+    gpio_pull_up(I2C_SCL);
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, ENDERECO, I2C_PORT);
+    ssd1306_config(&ssd);
+    ssd1306_send_data(&ssd);
+
+    // Configuração do buzzer
+    buzzer_setup_pwm(BUZZER_PIN, 4000);     // Configura o buzzer para 4kHz
+    buzzer_play(BUZZER_PIN, 1, 1000, 500);  // Toca um som inicial
+
+    // Configura os botões
+    gpio_init(BOTAO_A);
+    gpio_set_dir(BOTAO_A, GPIO_IN);
+    gpio_pull_up(BOTAO_A);
+
+    gpio_init(BOTAO_B);
+    gpio_set_dir(BOTAO_B, GPIO_IN);
+    gpio_pull_up(BOTAO_B);
+
+    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+
+    // Cria semáforo de contagem (máximo 10, inicial 0)
+    xContadorSem = xSemaphoreCreateCounting(10, 0);
+
+    // Cria tarefa
+    xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+
+    vTaskStartScheduler();
+    panic_unsupported();
+}
+
 // ISR do botão A (incrementa o semáforo de contagem)
-void gpio_callback(uint gpio, uint32_t events)
-{
+void gpio_callback(uint gpio, uint32_t events) {
+    //buzzer_play(BUZZER_PIN, 1, 1000, 100);
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 // Tarefa que consome eventos e mostra no display
-void vContadorTask(void *params)
-{
+void vContadorTask(void *params) {
     char buffer[32];
 
     // Tela inicial
@@ -50,11 +102,9 @@ void vContadorTask(void *params)
     ssd1306_draw_string(&ssd, "  evento...", 5, 34);
     ssd1306_send_data(&ssd);
 
-    while (true)
-    {
+    while (true) {
         // Aguarda semáforo (um evento)
-        if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE)
-        {
+        if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE) {
             eventosProcessados++;
 
             // Atualiza display com a nova contagem
@@ -78,50 +128,11 @@ void vContadorTask(void *params)
 }
 
 // ISR para BOOTSEL e botão de evento
-void gpio_irq_handler(uint gpio, uint32_t events)
-{
-    if (gpio == BOTAO_B)
-    {
+void gpio_irq_handler(uint gpio, uint32_t events) {
+    if (gpio == BOTAO_B) {
         reset_usb_boot(0, 0);
     }
-    else if (gpio == BOTAO_A)
-    {
+    else if (gpio == BOTAO_A) {
         gpio_callback(gpio, events);
     }
-}
-
-int main()
-{
-    stdio_init_all();
-
-    // Inicialização do display
-    i2c_init(I2C_PORT, 400 * 1000);
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    ssd1306_init(&ssd, WIDTH, HEIGHT, false, ENDERECO, I2C_PORT);
-    ssd1306_config(&ssd);
-    ssd1306_send_data(&ssd);
-
-    // Configura os botões
-    gpio_init(BOTAO_A);
-    gpio_set_dir(BOTAO_A, GPIO_IN);
-    gpio_pull_up(BOTAO_A);
-
-    gpio_init(BOTAO_B);
-    gpio_set_dir(BOTAO_B, GPIO_IN);
-    gpio_pull_up(BOTAO_B);
-
-    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
-
-    // Cria semáforo de contagem (máximo 10, inicial 0)
-    xContadorSem = xSemaphoreCreateCounting(10, 0);
-
-    // Cria tarefa
-    xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-
-    vTaskStartScheduler();
-    panic_unsupported();
 }
