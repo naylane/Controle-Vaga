@@ -8,6 +8,7 @@
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
 SemaphoreHandle_t xSemaforoSaida;
+SemaphoreHandle_t xSemaforoReset;
 SemaphoreHandle_t xDisplayMutex;
 uint16_t eventosProcessados = 0;
 uint MAX = 10;
@@ -15,6 +16,7 @@ uint vagas_preenchidas = 0;
 
 void vTaskEntrada(void *params);
 void vTaskSaida(void *params);
+void vTaskReset(void *params);
 void gpio_irq_handler(uint gpio, uint32_t events);
 void init_gpio_button(uint gpio);
 
@@ -53,9 +55,10 @@ int main() {
     gpio_set_irq_enabled(BUTTON_B, GPIO_IRQ_EDGE_FALL, true);
     gpio_set_irq_enabled(BUTTON_JOY, GPIO_IRQ_EDGE_FALL, true);
 
-    // Cria semáforos de contagem e mutex
+    // Cria semáforos de contagem, binário e mutex
     xContadorSem = xSemaphoreCreateCounting(10, 0);
     xSemaforoSaida = xSemaphoreCreateCounting(10, 0);
+    xSemaforoReset = xSemaphoreCreateBinary();
     xDisplayMutex = xSemaphoreCreateMutex();
 
 
@@ -63,6 +66,7 @@ int main() {
     xTaskCreate(vTaskEntrada, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskSaida, "SaidaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskReset, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
@@ -104,6 +108,7 @@ void vTaskEntrada(void *params) {
 
             // Simula tempo de processamento
             vTaskDelay(pdMS_TO_TICKS(1500));
+
             if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
                 // Retorna à tela de espera
                 ssd1306_fill(&ssd, 0);
@@ -133,8 +138,9 @@ void vTaskSaida(void *params) {
                     ssd1306_send_data(&ssd);
                     xSemaphoreGive(xDisplayMutex);
                 }
-                //buzzer_play(BUZZER_PIN, 1, 1000, 100);
+                
                 vTaskDelay(pdMS_TO_TICKS(1500));
+
                 if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
                     ssd1306_fill(&ssd, 0);
                     ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
@@ -148,6 +154,41 @@ void vTaskSaida(void *params) {
 }
 
 
+// Tarefa que reseta o contador de eventos
+void vTaskReset(void *params) {
+    char buffer[32];
+
+    while (true) {
+        if (xSemaphoreTake(xSemaforoReset, portMAX_DELAY) == pdTRUE) {
+            //buzzer_play(BUZZER_PIN, 2, 500, 500);
+            eventosProcessados = 0;
+            vagas_preenchidas = 0;
+
+            if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                ssd1306_fill(&ssd, 0);
+                ssd1306_draw_string(&ssd, "Contador ", 5, 10);
+                ssd1306_draw_string(&ssd, "resetado!", 5, 19);
+                sprintf(buffer, "Eventos: %d", eventosProcessados);
+                ssd1306_draw_string(&ssd, buffer, 5, 44);
+                ssd1306_send_data(&ssd);
+                xSemaphoreGive(xDisplayMutex);
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(1500));
+
+            if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
+                // Retorna à tela de espera
+                ssd1306_fill(&ssd, 0);
+                ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
+                ssd1306_draw_string(&ssd, "  evento...", 5, 34);
+                ssd1306_send_data(&ssd);
+                xSemaphoreGive(xDisplayMutex);
+            }
+        }
+    }
+}
+
+
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events) {
     uint32_t current_time = to_us_since_boot(get_absolute_time());
@@ -155,7 +196,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     if (gpio == BUTTON_B) {
         if (current_time - last_time_B > DEBOUNCE_TIME) {
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-            xSemaphoreGiveFromISR(xSemaforoSaida, &xHigherPriorityTaskWoken); // Sinaliza saída
+            xSemaphoreGiveFromISR(xSemaforoSaida, &xHigherPriorityTaskWoken);
             last_time_B = current_time;
             portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
@@ -172,9 +213,10 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     }
     else if (gpio == BUTTON_JOY) {
         if (current_time - last_time_joy > DEBOUNCE_TIME) {
-            buzzer_play(BUZZER_PIN, 1, 1000, 100); // Toca som de boot
-            reset_usb_boot(0, 0);
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xSemaphoreGiveFromISR(xSemaforoReset, &xHigherPriorityTaskWoken);
             last_time_joy = current_time;
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
         }
     }

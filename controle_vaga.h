@@ -23,7 +23,7 @@
 #define BUTTON_A 5
 #define BUTTON_B 6
 #define BUTTON_JOY 22
-#define DEBOUNCE_TIME 200000        // Tempo para debounce em ms
+#define DEBOUNCE_TIME 300000        // Tempo para debounce em ms
 static uint32_t last_time_A = 0;    // Tempo da última interrupção do botão A
 static uint32_t last_time_B = 0;    // Tempo da última interrupção do botão B
 static uint32_t last_time_joy = 0;    // Tempo da última interrupção do botão B
