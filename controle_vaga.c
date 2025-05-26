@@ -17,8 +17,10 @@ uint vagas_preenchidas = 0;
 void vTaskEntrada(void *params);
 void vTaskSaida(void *params);
 void vTaskReset(void *params);
+void vTaskLeds(void *params);
 void gpio_irq_handler(uint gpio, uint32_t events);
 void init_gpio_button(uint gpio);
+void init_gpio_led(uint gpio);
 
 
 int main() {
@@ -67,6 +69,7 @@ int main() {
     xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskSaida, "SaidaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskReset, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskLeds, "LedsTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
@@ -138,7 +141,7 @@ void vTaskSaida(void *params) {
                     ssd1306_send_data(&ssd);
                     xSemaphoreGive(xDisplayMutex);
                 }
-                
+
                 vTaskDelay(pdMS_TO_TICKS(1500));
 
                 if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
@@ -189,6 +192,59 @@ void vTaskReset(void *params) {
 }
 
 
+void vTaskLeds(void *params) {
+    // Configura os LEDs
+    init_gpio_led(LED_RED_PIN);
+    init_gpio_led(LED_BLUE_PIN);
+    init_gpio_led(LED_GREEN_PIN);
+
+    while (true) {
+        // Pisca o LED verde se houver vagas ocupadas dentro da faixa
+        if (MAX-2 < eventosProcessados > 0) {
+            gpio_put(LED_GREEN_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            gpio_put(LED_GREEN_PIN, 0);
+            vTaskDelay(pdMS_TO_TICKS(200));
+        } else {
+            gpio_put(LED_RED_PIN, 0);
+        }
+
+        // Pisca o LED azul se não tiver vagas ocupadas
+        if (eventosProcessados == 0) {
+            gpio_put(LED_BLUE_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(300));
+            gpio_put(LED_BLUE_PIN, 0);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        } else {
+            gpio_put(LED_BLUE_PIN, 0);
+        }
+
+        // Pisca o LED amarelo se houver apenas uma vaga restante
+        if (eventosProcessados == MAX-1) {
+            gpio_put(LED_RED_PIN, 1);
+            gpio_put(LED_BLUE_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(300));
+            gpio_put(LED_RED_PIN, 0);
+            gpio_put(LED_BLUE_PIN, 0);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        } else {
+            gpio_put(LED_BLUE_PIN, 0);
+            gpio_put(LED_RED_PIN, 0);
+        }
+
+        // Pisca o LED vermelho se o contador de eventos for igual a MAX
+        if (eventosProcessados == MAX) {
+            gpio_put(LED_RED_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            gpio_put(LED_RED_PIN, 0);
+            vTaskDelay(pdMS_TO_TICKS(500));
+        } else {
+            gpio_put(LED_GREEN_PIN, 0);
+        }
+    }
+}
+
+
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events) {
     uint32_t current_time = to_us_since_boot(get_absolute_time());
@@ -220,6 +276,14 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
             return;
         }
     }
+}
+
+
+// Inicializa GPIO para LEDs RGB
+void init_gpio_led(uint gpio) {
+    gpio_init(gpio);
+    gpio_set_dir(gpio, GPIO_OUT);
+    gpio_put(gpio, 0);
 }
 
 
