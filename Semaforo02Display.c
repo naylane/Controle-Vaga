@@ -26,8 +26,11 @@
 #define I2C_SCL 15
 #define ENDERECO 0x3C
 
-#define BOTAO_A 5 // Gera evento
-#define BOTAO_B 6 // BOOTSEL
+#define BUTTON_A 5 // Gera evento
+#define BUTTON_B 6 // BOOTSEL
+#define DEBOUNCE_TIME 200000        // Tempo para debounce em ms
+static uint32_t last_time_A = 0;    // Tempo da última interrupção do botão A
+static uint32_t last_time_B = 0;    // Tempo da última interrupção do botão B
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
@@ -63,16 +66,16 @@ int main() {
     buzzer_play(BUZZER_PIN, 1, 1000, 500);  // Toca um som inicial
 
     // Configura os botões
-    gpio_init(BOTAO_A);
-    gpio_set_dir(BOTAO_A, GPIO_IN);
-    gpio_pull_up(BOTAO_A);
+    gpio_init(BUTTON_A);
+    gpio_set_dir(BUTTON_A, GPIO_IN);
+    gpio_pull_up(BUTTON_A);
 
-    gpio_init(BOTAO_B);
-    gpio_set_dir(BOTAO_B, GPIO_IN);
-    gpio_pull_up(BOTAO_B);
+    gpio_init(BUTTON_B);
+    gpio_set_dir(BUTTON_B, GPIO_IN);
+    gpio_pull_up(BUTTON_B);
 
-    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+    gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled(BUTTON_B, GPIO_IRQ_EDGE_FALL, true);
 
     // Cria semáforo de contagem (máximo 10, inicial 0)
     xContadorSem = xSemaphoreCreateCounting(10, 0);
@@ -129,10 +132,20 @@ void vContadorTask(void *params) {
 
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events) {
-    if (gpio == BOTAO_B) {
-        reset_usb_boot(0, 0);
+    uint32_t current_time = to_us_since_boot(get_absolute_time());
+
+    if (gpio == BUTTON_B) {
+        if (current_time - last_time_B > DEBOUNCE_TIME) {
+            reset_usb_boot(0, 0);
+            last_time_B = current_time;
+            return;
+        }
     }
-    else if (gpio == BOTAO_A) {
-        gpio_callback(gpio, events);
+     else if (gpio == BUTTON_A) {
+        if (current_time - last_time_A > DEBOUNCE_TIME) {
+            gpio_callback(gpio, events);
+            last_time_A = current_time;
+            return;
+        }
     }
 }
