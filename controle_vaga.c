@@ -11,7 +11,7 @@ SemaphoreHandle_t xSemaforoSaida;
 SemaphoreHandle_t xSemaforoReset;
 SemaphoreHandle_t xDisplayMutex;
 uint16_t eventosProcessados = 0;
-uint MAX = 10;
+uint MAX = 10; // Número máximo de vagas no estacionamento
 uint vagas_preenchidas = 0;
 
 void vTaskEntrada(void *params);
@@ -46,7 +46,6 @@ int main() {
 
     // Configuração do buzzer
     buzzer_setup_pwm(BUZZER_PIN, 4000);     // Configura o buzzer para 4kHz
-    //buzzer_play(BUZZER_PIN, 1, 1000, 500);  // Toca um som inicial
 
     // Configura os botões
     init_gpio_button(BUTTON_A);
@@ -92,10 +91,10 @@ void vTaskEntrada(void *params) {
     while (true) {
         // Aguarda semáforo (um evento)
         if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE) {
-            eventosProcessados++;
-            if (eventosProcessados > MAX) {
+            if (eventosProcessados == MAX) {
                 buzzer_play(BUZZER_PIN, 1, 1000, 500);
-                eventosProcessados = 1; // Reseta contagem se passar de 10
+            } else {
+                eventosProcessados++;
             }
 
             if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY) == pdTRUE) {
@@ -199,48 +198,32 @@ void vTaskLeds(void *params) {
     init_gpio_led(LED_GREEN_PIN);
 
     while (true) {
-        // Pisca o LED verde se houver vagas ocupadas dentro da faixa
-        if (MAX-2 < eventosProcessados > 0) {
-            gpio_put(LED_GREEN_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(200));
-            gpio_put(LED_GREEN_PIN, 0);
-            vTaskDelay(pdMS_TO_TICKS(200));
-        } else {
-            gpio_put(LED_RED_PIN, 0);
-        }
-
-        // Pisca o LED azul se não tiver vagas ocupadas
+        // Liga o LED azul se não tiver vagas ocupadas
         if (eventosProcessados == 0) {
-            gpio_put(LED_BLUE_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(300));
-            gpio_put(LED_BLUE_PIN, 0);
-            vTaskDelay(pdMS_TO_TICKS(300));
-        } else {
-            gpio_put(LED_BLUE_PIN, 0);
-        }
-
-        // Pisca o LED amarelo se houver apenas uma vaga restante
-        if (eventosProcessados == MAX-1) {
-            gpio_put(LED_RED_PIN, 1);
-            gpio_put(LED_BLUE_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(300));
             gpio_put(LED_RED_PIN, 0);
-            gpio_put(LED_BLUE_PIN, 0);
-            vTaskDelay(pdMS_TO_TICKS(300));
-        } else {
-            gpio_put(LED_BLUE_PIN, 0);
-            gpio_put(LED_RED_PIN, 0);
-        }
-
-        // Pisca o LED vermelho se o contador de eventos for igual a MAX
-        if (eventosProcessados == MAX) {
-            gpio_put(LED_RED_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_put(LED_RED_PIN, 0);
-            vTaskDelay(pdMS_TO_TICKS(500));
-        } else {
             gpio_put(LED_GREEN_PIN, 0);
+            gpio_put(LED_BLUE_PIN, 1);
         }
+        // Liga o LED verde se houver vagas ocupadas dentro da faixa
+        else if (eventosProcessados < MAX-2 && eventosProcessados > 0) {
+            gpio_put(LED_RED_PIN, 0);
+            gpio_put(LED_GREEN_PIN, 1);
+            gpio_put(LED_BLUE_PIN, 0);
+        }
+        // Liga o LED amarelo se houver apenas uma vaga restante
+        else if (eventosProcessados == MAX-1) {
+            gpio_put(LED_RED_PIN, 1);
+            gpio_put(LED_GREEN_PIN, 1);
+            gpio_put(LED_BLUE_PIN, 0);
+        }
+        // Liga o LED vermelho se o contador de eventos for igual a MAX
+        else if (eventosProcessados == MAX) {
+            gpio_put(LED_RED_PIN, 1);
+            gpio_put(LED_GREEN_PIN, 0);
+            gpio_put(LED_BLUE_PIN, 0);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -251,10 +234,12 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 
     if (gpio == BUTTON_B) {
         if (current_time - last_time_B > DEBOUNCE_TIME) {
+            reset_usb_boot(0, 0);
+            /*
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             xSemaphoreGiveFromISR(xSemaforoSaida, &xHigherPriorityTaskWoken);
             last_time_B = current_time;
-            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);*/
             return;
         }
     }
