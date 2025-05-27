@@ -27,11 +27,10 @@
 #define DEBOUNCE_TIME 300000        // Tempo para debounce em ms
 static uint32_t last_time_A = 0;    // Tempo da última interrupção do botão A
 static uint32_t last_time_B = 0;    // Tempo da última interrupção do botão B
-static uint32_t last_time_joy = 0;    // Tempo da última interrupção do botão B
+static uint32_t last_time_joy = 0;  // Tempo da última interrupção do botão do Joystick
 
-// Definição dos pinos dos LEDs
 #define LED_RED_PIN 13
-#define LED_BLUE_PIN 12      
+#define LED_BLUE_PIN 12
 #define LED_GREEN_PIN 11
 
 #endif

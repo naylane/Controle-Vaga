@@ -11,7 +11,7 @@ SemaphoreHandle_t xSemaforoSaida;
 SemaphoreHandle_t xSemaforoReset;
 SemaphoreHandle_t xDisplayMutex;
 uint16_t eventosProcessados = 0;
-uint MAX = 10; // Número máximo de vagas no estacionamento
+uint MAX = 5; // Número máximo de vagas no estacionamento
 uint vagas_preenchidas = 0;
 
 void vTaskEntrada(void *params);
@@ -89,8 +89,9 @@ void vTaskEntrada(void *params) {
         // Aguarda semáforo (um evento)
         if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE) {
             if (eventosProcessados == MAX) {
-                buzzer_play(BUZZER_PIN, 1, 1000, 500);
+                buzzer_play(BUZZER_PIN, 1, 500, 500);
             } else {
+                buzzer_play(BUZZER_PIN, 1, 1200, 250);
                 eventosProcessados++;
             }
 
@@ -159,7 +160,7 @@ void vTaskReset(void *params) {
 
     while (true) {
         if (xSemaphoreTake(xSemaforoReset, portMAX_DELAY) == pdTRUE) {
-            //buzzer_play(BUZZER_PIN, 2, 500, 500);
+            buzzer_play(BUZZER_PIN, 2, 1000, 500);
             eventosProcessados = 0;
             vagas_preenchidas = 0;
 
@@ -232,12 +233,10 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 
     if (gpio == BUTTON_B) {
         if (current_time - last_time_B > DEBOUNCE_TIME) {
-            reset_usb_boot(0, 0);
-            /*
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             xSemaphoreGiveFromISR(xSemaforoSaida, &xHigherPriorityTaskWoken);
             last_time_B = current_time;
-            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);*/
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
         }
     }
