@@ -20,6 +20,7 @@
 #define I2C_SDA 14
 #define I2C_SCL 15
 #define ENDERECO 0x3C
+ssd1306_t ssd;
 
 #define BUTTON_A 5
 #define BUTTON_B 6

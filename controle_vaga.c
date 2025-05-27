@@ -5,8 +5,7 @@
 
 #include "controle_vaga.h"
 
-ssd1306_t ssd;
-SemaphoreHandle_t xContadorSem;
+SemaphoreHandle_t xSemaforoEntrada;
 SemaphoreHandle_t xSemaforoSaida;
 SemaphoreHandle_t xSemaforoReset;
 SemaphoreHandle_t xDisplayMutex;
@@ -56,7 +55,7 @@ int main() {
     gpio_set_irq_enabled(BUTTON_JOY, GPIO_IRQ_EDGE_FALL, true);
 
     // Cria semáforos de contagem, semáforo binário e mutex
-    xContadorSem = xSemaphoreCreateCounting(10, 0);
+    xSemaforoEntrada = xSemaphoreCreateCounting(10, 0);
     xSemaforoSaida = xSemaphoreCreateCounting(10, 0);
     xSemaforoReset = xSemaphoreCreateBinary();
     xDisplayMutex = xSemaphoreCreateMutex();
@@ -87,7 +86,7 @@ void vTaskEntrada(void *params) {
 
     while (true) {
         // Aguarda semáforo (um evento)
-        if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE) {
+        if (xSemaphoreTake(xSemaforoEntrada, portMAX_DELAY) == pdTRUE) {
             if (eventosProcessados == MAX) {
                 buzzer_play(BUZZER_PIN, 1, 500, 500);
             } else {
@@ -243,7 +242,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     else if (gpio == BUTTON_A) {
         if (current_time - last_time_A > DEBOUNCE_TIME) {
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-            xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
+            xSemaphoreGiveFromISR(xSemaforoEntrada, &xHigherPriorityTaskWoken);
             last_time_A = current_time;
             portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             return;
