@@ -45,26 +45,23 @@ int main() {
     ssd1306_send_data(&ssd);
 
     // Configuração do buzzer
-    buzzer_setup_pwm(BUZZER_PIN, 4000);     // Configura o buzzer para 4kHz
+    buzzer_setup_pwm(BUZZER_PIN, 4000);
 
     // Configura os botões
     init_gpio_button(BUTTON_A);
     init_gpio_button(BUTTON_B);
     init_gpio_button(BUTTON_JOY);
-
     gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled(BUTTON_B, GPIO_IRQ_EDGE_FALL, true);
     gpio_set_irq_enabled(BUTTON_JOY, GPIO_IRQ_EDGE_FALL, true);
 
-    // Cria semáforos de contagem, binário e mutex
+    // Cria semáforos de contagem, semáforo binário e mutex
     xContadorSem = xSemaphoreCreateCounting(10, 0);
     xSemaforoSaida = xSemaphoreCreateCounting(10, 0);
     xSemaforoReset = xSemaphoreCreateBinary();
     xDisplayMutex = xSemaphoreCreateMutex();
 
-
-    // Cria tarefa
-    xTaskCreate(vTaskEntrada, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    // Cria tarefas
     xTaskCreate(vTaskEntrada, "EntradaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskSaida, "SaidaTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskReset, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
@@ -75,7 +72,7 @@ int main() {
 }
 
 
-// Tarefa que consome eventos e mostra no display
+// Preenche uma vaga no estacionamento
 void vTaskEntrada(void *params) {
     char buffer[32];
 
@@ -124,7 +121,7 @@ void vTaskEntrada(void *params) {
 }
 
 
-// Tarefa que consome eventos de saída e mostra no display
+// Libera uma vaga no estacionamento
 void vTaskSaida(void *params) {
     char buffer[32];
 
@@ -156,7 +153,7 @@ void vTaskSaida(void *params) {
 }
 
 
-// Tarefa que reseta o contador de eventos
+// Esvazia (reseta) o estacionamento.
 void vTaskReset(void *params) {
     char buffer[32];
 
@@ -191,6 +188,7 @@ void vTaskReset(void *params) {
 }
 
 
+// Controla os LEDs RGB de acordo com a quantidade de vagas ocupadas.
 void vTaskLeds(void *params) {
     // Configura os LEDs
     init_gpio_led(LED_RED_PIN);
@@ -228,7 +226,7 @@ void vTaskLeds(void *params) {
 }
 
 
-// ISR para BOOTSEL e botão de evento
+// Função de tratamento de interrupção dos botões
 void gpio_irq_handler(uint gpio, uint32_t events) {
     uint32_t current_time = to_us_since_boot(get_absolute_time());
 
